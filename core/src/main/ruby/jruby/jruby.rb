@@ -44,6 +44,34 @@ module JRuby
       end
     end
 
+    # cleanup the jars copied to the temp directory when it gets
+    # added to the JRuby classloader. when killing jruby hard
+    # then those files remain there as the JVM does not clean them
+    # up.
+    def cleanup_stale_tempfiles
+      Dir[File.join(ENV_JAVA['java.io.tmpdir'], 'jruby-*')].each do |dir|
+        pid = File.basename(dir)[6..-1]
+        unless process_exists?(pid)
+          # do not use fileutils here as we are in jruby-core
+          Dir[File.join(dir, '*')].each do |file|
+            File.delete(file) rescue warn "could not delete #{file}"
+          end
+          Dir.delete(dir) rescue warn "could not delete #{dir}"
+        end
+      end
+    end
+
+    # stolen from process_exists gem https://github.com/wilsonsilva/process_exists/blob/master/lib/process_exists/core_ext/process.rb
+    def process_exists?(pid)
+      Process.kill(0, pid.to_i)
+      true
+    rescue Errno::ESRCH # No such process
+      false
+    rescue Errno::EPERM # The process exists, but you dont have permission to send the signal to it.
+      true
+    end
+    private :process_exists?
+
     # Parse the given block or the provided content, returning a JRuby AST node.
     def parse(content = nil, filename = (default_filename = true; '-'), extra_position_info = false, &block)
       if block
